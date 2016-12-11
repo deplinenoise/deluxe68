@@ -118,7 +118,7 @@ private:
   StringFragment nextLine();
 
   bool expect(Tokenizer& t, TokenType type, Token* out = nullptr);
-  bool accept(Tokenizer& t, TokenType type);
+  bool accept(Tokenizer& t, TokenType type, Token* out = nullptr);
 
   int findFirstFree(RegisterClass regClass) const;
 };
@@ -435,9 +435,20 @@ void Deluxe68::spill(Tokenizer& tokenizer)
   do
   {
     Token idToken;
-    if (!expect(tokenizer, TokenType::kIdentifier, &idToken))
+    StringFragment id;
+    if (accept(tokenizer, TokenType::kIdentifier, &idToken))
+    {
+      id = idToken.m_String;
+    }
+    else if (expect(tokenizer, TokenType::kRegister, &idToken))
+    {
+      int regIndex = idToken.m_Register;
+      id = m_Registers[regIndex].m_AllocatingVarName;
+    }
+    else
+    {
       return;
-    StringFragment id = idToken.m_String;
+    }
 
     auto it = m_LiveRegs.find(id);
     if (it == m_LiveRegs.end())
@@ -460,6 +471,7 @@ void Deluxe68::spill(Tokenizer& tokenizer)
 
     m_AllocatedRegs &= ~(1 << regIndex);
     savedRegs |= 1 << regIndex;
+    m_Registers[regIndex].m_AllocatingVarName = StringFragment();
 
   } while (accept(tokenizer, TokenType::kComma));
 
@@ -504,6 +516,7 @@ void Deluxe68::restore(Tokenizer& tokenizer)
 
     m_AllocatedRegs &= ~(1 << regIndex);
     restoredRegs |= 1 << regIndex;
+    m_Registers[regIndex].m_AllocatingVarName = id;
 
   } while (accept(tokenizer, TokenType::kComma));
 
@@ -540,12 +553,15 @@ bool Deluxe68::expect(Tokenizer& tokenizer, TokenType type, Token* out)
   }
 }
 
-bool Deluxe68::accept(Tokenizer& tokenizer, TokenType type)
+bool Deluxe68::accept(Tokenizer& tokenizer, TokenType type, Token* out)
 {
   Token t = tokenizer.peek();
   if (t.m_Type == type)
   {
-    tokenizer.next();
+    if (out)
+      *out = tokenizer.next();
+    else
+      tokenizer.next();
     return true;
   }
   else
