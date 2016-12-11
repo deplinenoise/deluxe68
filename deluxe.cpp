@@ -8,123 +8,7 @@
 #include <vector>
 #include <string>
 
-enum class TokenType
-{
-  kAreg,
-  kDreg,
-  kKill,
-  kReserve,
-  kRegisterName,
-  kIdentifier,
-  kLeftParen,
-  kRightParen,
-  kComma,
-  kColon,
-  kEndOfLine,
-  kUnknown
-};
-
-struct Token
-{
-  TokenType m_Type;
-  const char* m_Start;
-  const char* m_End;
-};
-
-static const char* skipWhitespace(const char* p);
-
-class Tokenizer
-{
-  const char* m_Ptr;
-
-public:
-  explicit Tokenizer(const char* p) : m_Ptr(p) {}
-
-public:
-  void next(Token* t);
-};
-
-void Tokenizer::next(Token* t)
-{
-  auto set_single_char_token = [this, &t](TokenType type)
-  {
-    t->m_Type = type;
-    t->m_Start = m_Ptr;
-    t->m_End = m_Ptr + 1;
-    if (type != TokenType::kEndOfLine)
-      ++m_Ptr;
-  };
-
-  m_Ptr = skipWhitespace(m_Ptr);
-
-  switch (m_Ptr[0])
-  {
-    case '\0': set_single_char_token(TokenType::kEndOfLine); return;
-    case '(': set_single_char_token(TokenType::kLeftParen); return;
-    case ')': set_single_char_token(TokenType::kRightParen); return;
-    case ',': set_single_char_token(TokenType::kComma); return;
-    case ':': set_single_char_token(TokenType::kColon); return;
-    default: break;
-  }
-
-  const char* end = m_Ptr;
-  while (isalnum(*end))
-  {
-    ++end;
-  }
-
-  if (end == m_Ptr)
-  {
-    return set_single_char_token(TokenType::kUnknown);
-  }
-
-  size_t len = end - m_Ptr;
-
-  static struct Keyword {
-    size_t len;
-    const char text[8];
-    TokenType type;
-  } keywords[] = {
-    { 4, "dreg", TokenType::kDreg },
-    { 4, "areg", TokenType::kAreg },
-    { 4, "kill", TokenType::kKill },
-    { 7, "reserve", TokenType::kReserve },
-  };
-
-  for (size_t i = 0; i < sizeof(keywords)/sizeof(keywords[0]); ++i)
-  {
-    if (keywords[i].len != len)
-      continue;
-    if (0 != memcmp(keywords[i].text, m_Ptr, len))
-      continue;
-
-    t->m_Type = keywords[i].type;
-    t->m_Start = m_Ptr;
-    t->m_End = end;
-    m_Ptr = end;
-    return;
-  }
-
-  if (len == 2)
-  {
-    if (m_Ptr[0] == 'a' || m_Ptr[0] == 'd')
-    {
-      if (m_Ptr[1] >= '0' && m_Ptr[1] <= '7')
-      {
-        t->m_Type = m_Ptr[0] == 'a' ? TokenType::kAreg : TokenType::kDreg;
-        t->m_Start = m_Ptr;
-        t->m_End = end;
-        m_Ptr = end;
-        return;
-      }
-    }
-  }
-
-  t->m_Type = TokenType::kIdentifier;
-  t->m_Start = m_Ptr;
-  t->m_End = end;
-  m_Ptr = end;
-}
+#include "tokenizer.h"
 
 class Deluxe68
 {
@@ -134,6 +18,7 @@ class Deluxe68
   const char* m_Filename;
   int         m_LineNumber = 0;
   int         m_ErrorCount = 0;
+  bool        m_InProc = false;
 
   enum RegState : uint8_t
   {
@@ -149,6 +34,7 @@ class Deluxe68
   {
     uint8_t m_IsAddr = 0;
     uint8_t m_Index = 0;
+    int     m_AllocatedLine = 0;
   };
 
   std::unordered_map<std::string, RegAlloc> m_LiveRegs;
@@ -175,21 +61,22 @@ private:
 
   void allocRegs(Tokenizer& tokenizer, TokenType regType);
   void killRegs(Tokenizer& tokenizer);
+  void proc(Tokenizer& tokenizer);
+  void endProc(Tokenizer& tokenizer);
+  void reserve(Tokenizer& tokenizer);
+  void unreserve(Tokenizer& tokenizer);
+
+  void killAll();
+
+  bool expect(Tokenizer& t, TokenType type, Token* out = nullptr);
+  bool accept(Tokenizer& t, TokenType type);
 };
 
 Deluxe68::Deluxe68(const char* fn)
   : m_Input(fopen(fn, "r"))
   , m_Filename(fn)
 {
-  for (int i = 0; i < 8; ++i)
-  {
-    m_DataRegs[i] = kFree;
-  }
-  for (int i = 0; i < 7; ++i)
-  {
-    m_AddrRegs[i] = kFree;
-  }
-  m_AddrRegs[7] = kReserved;
+  killAll();
 
   if (!m_Input)
   {
@@ -241,11 +128,8 @@ void Deluxe68::parseLine()
     return;
   }
 
-  error("unknown directive: %s", p);
-
   Tokenizer tokenizer(p + 1);
-  Token t;
-  tokenizer.next(&t);
+  Token t = tokenizer.next();
 
   switch (t.m_Type)
   {
@@ -258,8 +142,24 @@ void Deluxe68::parseLine()
       killRegs(tokenizer);
       break;
 
+    case TokenType::kProc:
+      proc(tokenizer);
+      break;
+
+    case TokenType::kEndProc:
+      endProc(tokenizer);
+      break;
+
+    case TokenType::kReserve:
+      reserve(tokenizer);
+      break;
+
+    case TokenType::kUnreserve:
+      unreserve(tokenizer);
+      break;
+
     default:
-      error("unsupported syntax: %s", t.m_Start);
+      error("unsupported syntax: %s\n", tokenTypeName(t.m_Type));
       return;
   }
 
@@ -268,18 +168,23 @@ void Deluxe68::parseLine()
 
 void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
 {
-  Token t;
+  bool first = true;
+
   for (;;)
   {
-    tokenizer.next(&t);
-
-    if (TokenType::kIdentifier != t.m_Type)
-    {
-      error("expected identifier\n");
+    if (accept(tokenizer, TokenType::kEndOfLine))
       return;
-    }
 
-    std::string name(t.m_Start, t.m_End);
+    if (!first && !expect(tokenizer, TokenType::kComma))
+      return;
+
+    first = false;
+
+    Token ident;
+    if (!expect(tokenizer, TokenType::kIdentifier, &ident))
+      return;
+
+    std::string name(ident.m_Start, ident.m_End);
 
     if (m_LiveRegs.find(name) != m_LiveRegs.end())
     {
@@ -291,13 +196,45 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
     const bool isAddr = regType == TokenType::kAreg ? true : false;
     RegState* s = isAddr ? m_AddrRegs : m_DataRegs;
 
-    for (int i = 0; i < 8; ++i)
+    if (accept(tokenizer, TokenType::kLeftParen))
     {
-      if (s[i] == kFree)
+      Token reg;
+      if (!expect(tokenizer, TokenType::kRegisterName, &reg))
+        return;
+      if (!expect(tokenizer, TokenType::kRightParen))
+        return;
+
+      // Make sure the name checks out.
+      if (isAddr && 'a' != reg.m_Start[0])
       {
-        s[i] = kAllocated;
-        index = i;
-        break;
+        error("expected address register");
+        return;
+      }
+      else if (!isAddr && 'd' != reg.m_Start[0])
+      {
+        error("expected data register");
+        return;
+      }
+
+      index = int(reg.m_Start[1]) - '0';
+
+      if (s[index] != kFree)
+      {
+        error("register %.*s not free here\n", 2, reg.m_Start);
+        continue;
+      }
+    }
+    else
+    {
+      // Grab the first free register.
+      for (int i = 0; i < 8; ++i)
+      {
+        if (s[i] == kFree)
+        {
+          s[i] = kAllocated;
+          index = i;
+          break;
+        }
       }
     }
 
@@ -310,36 +247,29 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
     RegAlloc a;
     a.m_IsAddr = isAddr ? 1 : 0;
     a.m_Index = (uint8_t) index;
+    a.m_AllocatedLine = m_LineNumber;
     m_LiveRegs.insert(std::make_pair(name, a));
-
-    tokenizer.next(&t);
-
-    if (TokenType::kEndOfLine == t.m_Type)
-    {
-      return;
-    }
-    else if (TokenType::kComma != t.m_Type)
-    {
-      error("expected comma\n");
-      return;
-    }
-  }
+ }
 }
 
 void Deluxe68::killRegs(Tokenizer& tokenizer)
 {
-  Token t;
+  bool first = true;
   for (;;)
   {
-    tokenizer.next(&t);
-
-    if (TokenType::kIdentifier != t.m_Type)
-    {
-      error("expected identifier\n");
+    if (accept(tokenizer, TokenType::kEndOfLine))
       return;
-    }
 
-    std::string name(t.m_Start, t.m_End);
+    if (!first && !expect(tokenizer, TokenType::kComma))
+      return;
+
+    first = false;
+
+    Token ident;
+    if (!expect(tokenizer, TokenType::kIdentifier, &ident))
+      return;
+
+    std::string name(ident.m_Start, ident.m_End);
 
     auto it = m_LiveRegs.find(name);
 
@@ -353,35 +283,131 @@ void Deluxe68::killRegs(Tokenizer& tokenizer)
     RegState* s = a.m_IsAddr ? m_AddrRegs : m_DataRegs;
     s[a.m_Index] = kFree;
     m_LiveRegs.erase(it);
-
-    tokenizer.next(&t);
-
-    if (TokenType::kEndOfLine == t.m_Type)
-    {
-      return;
-    }
-    else if (TokenType::kComma != t.m_Type)
-    {
-      error("expected comma\n");
-      return;
-    }
   }
-
 }
 
-const char* skipWhitespace(const char* p)
+void Deluxe68::proc(Tokenizer& tokenizer)
 {
-  while (isspace(*p))
+  if (m_InProc)
   {
-    ++p;
+    error("already inside a procedure definition\n");
+    Tokenizer subt("");
+    endProc(subt);
   }
-  return p;
+
+  m_InProc = true;
+}
+
+void Deluxe68::endProc(Tokenizer& tokenizer)
+{
+  killAll();
+  m_InProc = false;
+}
+
+void Deluxe68::reserve(Tokenizer& tokenizer)
+{
+  do
+  {
+    Token reg;
+    if (!expect(tokenizer, TokenType::kRegisterName, &reg))
+      return;
+
+    const bool isAddr = reg.m_Start[0] == 'a';
+    RegState* s = isAddr ? m_AddrRegs : m_DataRegs;
+    int index = int(reg.m_Start[1]) - '0';
+
+    if (s[index] != kFree)
+    {
+      error("register %.*s not free here\n", 2, reg.m_Start);
+      continue;
+    }
+
+    s[index] = kReserved;
+
+  } while (accept(tokenizer, TokenType::kComma));
+}
+
+void Deluxe68::unreserve(Tokenizer& tokenizer)
+{
+  do
+  {
+    Token reg;
+    if (!expect(tokenizer, TokenType::kRegisterName, &reg))
+      return;
+
+    const bool isAddr = reg.m_Start[0] == 'a';
+    RegState* s = isAddr ? m_AddrRegs : m_DataRegs;
+    int index = int(reg.m_Start[1]) - '0';
+
+    if (s[index] != kReserved)
+    {
+      error("register %.*s not reserved here\n", 2, reg.m_Start);
+      continue;
+    }
+
+    s[index] = kFree;
+
+  } while (accept(tokenizer, TokenType::kComma));
+}
+
+void Deluxe68::killAll()
+{
+  m_LiveRegs.clear();
+
+  for (int i = 0; i < 8; ++i)
+  {
+    m_DataRegs[i] = kFree;
+  }
+
+  for (int i = 0; i < 7; ++i)
+  {
+    m_AddrRegs[i] = kFree;
+  }
+
+  m_AddrRegs[7] = kReserved;
 }
 
 void Deluxe68::bufferLine(const char* line)
 {
   size_t len = strlen(line);
   m_Output.insert(m_Output.end(), line, line + len);
+}
+
+bool Deluxe68::expect(Tokenizer& tokenizer, TokenType type, Token* out)
+{
+  Token t = tokenizer.peek();
+  if (t.m_Type == type)
+  {
+    if (out)
+    {
+      *out = tokenizer.next();
+    }
+    else
+    {
+      tokenizer.next();
+    }
+
+    return true;
+  }
+  else
+  {
+    error("expected %s, got %s\n", tokenTypeName(type), tokenTypeName(t.m_Type));
+    return false;
+  }
+}
+
+bool Deluxe68::accept(Tokenizer& tokenizer, TokenType type)
+{
+  Token t = tokenizer.peek();
+  if (t.m_Type == type)
+  {
+    tokenizer.next();
+    return true;
+  }
+  else
+  {
+    return false;
+  }
 }
 
 int main(int argc, char* argv[])
