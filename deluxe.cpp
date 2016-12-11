@@ -30,7 +30,7 @@ struct ProcedureDef
 struct OutputElement
 {
   OutputElement() = default;
-  explicit OutputElement(StringFragment f) : m_String(f) {}
+  constexpr explicit OutputElement(StringFragment f) : m_String(f) {}
   explicit OutputElement(OutputKind kind, int regMask) : m_RegisterMask(regMask), m_Kind(kind) {}
   explicit OutputElement(OutputKind kind, StringFragment f) : m_String(f), m_Kind(kind) {}
 
@@ -104,12 +104,15 @@ private:
   void restore(Tokenizer& tokenizer);
 
   void output(OutputElement elem);
+  void handleRegularLine(StringFragment line);
+  void newline();
 
   uint32_t usedRegsForProcecure(const StringFragment& procName) const;
   static void printSpill(FILE* f, uint32_t regMask);
   static void printRestore(FILE* f, uint32_t regMask);
   static void printMovemList(FILE* f, uint32_t regMask);
   void killAll();
+  bool doAllocate(StringFragment id, int regIndex);
 
   bool dataLeft() const;
   StringFragment nextLine();
@@ -165,11 +168,15 @@ void Deluxe68::parseLine(StringFragment line)
 
   if (!payload || payload[0] != '@')
   {
-    output(OutputElement(line));
+    handleRegularLine(line);
     return;
   }
 
-  Tokenizer tokenizer(line.skip(1));
+  output(OutputElement(StringFragment("\t\t; ", 4)));
+  output(OutputElement(line));
+  newline();
+
+  Tokenizer tokenizer(payload.skip(1));
   Token t = tokenizer.next();
 
   switch (t.m_Type)
@@ -203,8 +210,12 @@ void Deluxe68::parseLine(StringFragment line)
       spill(tokenizer);
       break;
 
+    case TokenType::kRestore:
+      restore(tokenizer);
+      break;
+
     default:
-      error("unsupported syntax: %s: %.*s\n", tokenTypeName(t.m_Type), t.m_String.length(), t.m_String.ptr());
+      error("unsupported syntax: %s: %.*s\n", tokenTypeName(t.m_Type), line.length(), line.ptr());
       return;
   }
 }
@@ -237,12 +248,6 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
         return;
 
       index = reg.m_Register;
-
-      if ((m_AllocatedRegs | m_ReservedRegs) & (1 << index))
-      {
-        error("register %.*s not free here\n", 2, regName(index));
-        continue;
-      }
     }
     else
     {
@@ -255,16 +260,43 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
       continue;
     }
 
-    RegAlloc a;
-    a.m_RegIndex = static_cast<uint8_t>(index);
-    a.m_AllocatedLine = m_LineNumber;
-    m_LiveRegs.insert(std::make_pair(id, a));
-
-    m_CurrentProc.m_UsedRegs |= 1 << index;
+    if (doAllocate(id, index))
+    {
+    }
 
  } while (accept(tokenizer, TokenType::kComma));
 
   expect(tokenizer, TokenType::kEndOfLine);
+}
+
+bool Deluxe68::doAllocate(StringFragment id, int regIndex)
+{
+  if ((m_AllocatedRegs | m_ReservedRegs) & (1 << regIndex))
+  {
+    StringFragment owner = m_Registers[regIndex].m_AllocatingVarName;
+    error("register %.*s not free here (used by %.*s)\n", 2, regName(regIndex), owner.length(), owner.ptr());
+    return false;
+  }
+  else
+  {
+    RegAlloc a;
+    a.m_RegIndex = static_cast<uint8_t>(regIndex);
+    a.m_AllocatedLine = m_LineNumber;
+    m_LiveRegs.insert(std::make_pair(id, a));
+
+    m_AllocatedRegs |= 1 << regIndex;
+    m_CurrentProc.m_UsedRegs |= 1 << regIndex;
+
+    output(OutputElement(StringFragment("\t\t; live reg ")));
+    output(OutputElement(regName(regIndex)));
+    output(OutputElement(StringFragment(" => ")));
+    output(OutputElement(id));
+    newline();
+
+    m_Registers[regIndex].m_AllocatingVarName = id;
+
+    return true;
+  }
 }
 
 void Deluxe68::killRegs(Tokenizer& tokenizer)
@@ -285,7 +317,7 @@ void Deluxe68::killRegs(Tokenizer& tokenizer)
       continue;
     }
 
-    const RegAlloc a = it->second;
+    const RegAlloc& a = it->second;
     m_AllocatedRegs &= ~(1 << a.m_RegIndex);
     m_LiveRegs.erase(it);
 
@@ -315,6 +347,30 @@ void Deluxe68::proc(Tokenizer& tokenizer)
     m_CurrentProcName = ident.m_String;
     m_CurrentProc = ProcedureDef();
   }
+
+  expect(tokenizer, TokenType::kLeftParen);
+
+  do
+  {
+    Token reg;
+    if (!expect(tokenizer, TokenType::kRegister, &reg))
+      return;
+
+    if (!expect(tokenizer, TokenType::kColon))
+      return;
+
+    Token identToken;
+    if (!expect(tokenizer, TokenType::kIdentifier, &identToken))
+      return;
+
+    doAllocate(identToken.m_String, reg.m_Register);
+
+  } while (accept(tokenizer, TokenType::kComma));
+
+  expect(tokenizer, TokenType::kRightParen);
+  expect(tokenizer, TokenType::kEndOfLine);
+
+  output(OutputElement(OutputKind::kProcHeader, ident.m_String));
 }
 
 void Deluxe68::endProc(Tokenizer& tokenizer)
@@ -323,6 +379,7 @@ void Deluxe68::endProc(Tokenizer& tokenizer)
 
   if (m_CurrentProcName)
   {
+    output(OutputElement(OutputKind::kProcFooter, m_CurrentProcName));
     m_Procedures.insert(std::make_pair(m_CurrentProcName, m_CurrentProc));
   }
   m_CurrentProcName = StringFragment();
@@ -377,21 +434,80 @@ void Deluxe68::spill(Tokenizer& tokenizer)
 
   do
   {
-    Token reg;
-    if (!expect(tokenizer, TokenType::kRegister, &reg))
+    Token idToken;
+    if (!expect(tokenizer, TokenType::kIdentifier, &idToken))
       return;
-    int regIndex = reg.m_Register;
+    StringFragment id = idToken.m_String;
 
-    if (0 == (m_AllocatedRegs & (1 << regIndex)))
+    auto it = m_LiveRegs.find(id);
+    if (it == m_LiveRegs.end())
     {
+      error("unknown register %.*s\n", id.length(), id.ptr());
       continue;
     }
 
+    RegAlloc& alloc = it->second;
+
+    if (alloc.m_Spilled)
+    {
+      error("register %.*s is already spilled\n", id.length(), id.ptr());
+      continue;
+    }
+
+    alloc.m_Spilled = 1;
+
+    int regIndex = alloc.m_RegIndex;
+
+    m_AllocatedRegs &= ~(1 << regIndex);
     savedRegs |= 1 << regIndex;
 
   } while (accept(tokenizer, TokenType::kComma));
 
   output(OutputElement(OutputKind::kSpill, savedRegs));
+}
+
+void Deluxe68::restore(Tokenizer& tokenizer)
+{
+  int restoredRegs = 0;
+
+  do
+  {
+    Token idToken;
+    if (!expect(tokenizer, TokenType::kIdentifier, &idToken))
+      return;
+    StringFragment id = idToken.m_String;
+
+    auto it = m_LiveRegs.find(id);
+    if (it == m_LiveRegs.end())
+    {
+      error("unknown register %.*s\n", id.length(), id.ptr());
+      continue;
+    }
+
+    RegAlloc& alloc = it->second;
+
+    if (!alloc.m_Spilled)
+    {
+      error("register %.*s is not spilled\n", id.length(), id.ptr());
+      continue;
+    }
+
+    int regIndex = alloc.m_RegIndex;
+    if (m_AllocatedRegs &= (1 << regIndex))
+    {
+      StringFragment owner = m_Registers[regIndex].m_AllocatingVarName;
+      error("register %.*s home slot %s is occupied by %.*s\n", id.length(), id.ptr(), regName(regIndex), owner.length(), owner.ptr());
+      continue;
+    }
+
+    alloc.m_Spilled = 0;
+
+    m_AllocatedRegs &= ~(1 << regIndex);
+    restoredRegs |= 1 << regIndex;
+
+  } while (accept(tokenizer, TokenType::kComma));
+
+  output(OutputElement(OutputKind::kRestore, restoredRegs));
 }
 
 void Deluxe68::killAll()
@@ -485,7 +601,7 @@ int Deluxe68::findFirstFree(RegisterClass regClass) const
   }
 
   // TODO: PERF: Bit scan forward.
-  for (int i = 0, mask = 1; i < 8; ++i)
+  for (int i = 0, mask = 1; i < 8; ++i, mask <<= 1)
   {
     if (0 == (classBits & mask))
       return i + offset;
@@ -565,6 +681,71 @@ void Deluxe68::printMovemList(FILE* f, uint32_t selectedRegs)
 void Deluxe68::output(OutputElement elem)
 {
   m_OutputSchedule.push_back(elem);
+}
+
+void Deluxe68::newline()
+{
+  static constexpr OutputElement nl(StringFragment("\n", 1));
+
+  m_OutputSchedule.push_back(nl);
+}
+
+void Deluxe68::handleRegularLine(StringFragment line)
+{
+  for (int i = 0; i < line.length(); )
+  {
+    if (line[i] == '@')
+    {
+      if (i > 0)
+      {
+        output(OutputElement(line.slice(i)));
+      }
+
+      line.slice(1); // Eat '@'
+
+      int max = line.length();
+      for (i = 0; i < max; ++i)
+      {
+        char ch = line[i];
+        if (!isalnum(ch) && ch != '_')
+        {
+          break;
+        }
+      }
+
+      StringFragment varName = line.slice(i);
+      if (varName.length() > 0)
+      {
+        auto it = m_LiveRegs.find(varName);
+        if (it == m_LiveRegs.end())
+        {
+          error("unknown register '%.*s' referenced\n", varName.length(), varName.ptr());
+        }
+        else
+        {
+          output(OutputElement(StringFragment(regName(it->second.m_RegIndex), 2)));
+        }
+      }
+      else
+      {
+        // It's a lone '@', retain it, because they're used in macros.
+        output(OutputElement(StringFragment("@", 1)));
+      }
+
+      i = 0; // restart
+    }
+    else
+    {
+      ++i;
+    }
+  }
+
+  if (line.length() > 0)
+  {
+    output(OutputElement(line));
+  }
+
+  newline();
 }
 
 int main(int argc, char* argv[])

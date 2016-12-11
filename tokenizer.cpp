@@ -68,6 +68,9 @@ Token Tokenizer::decodeNext()
     case ')': return Token(TokenType::kRightParen, m_Remain.slice(1));
     case ',': return Token(TokenType::kComma, m_Remain.slice(1));
     case ':': return Token(TokenType::kColon, m_Remain.slice(1));
+    case ';':
+      m_Remain = StringFragment();
+      return Token(TokenType::kEndOfLine, StringFragment());
     default: break;
   }
 
@@ -78,6 +81,7 @@ Token Tokenizer::decodeNext()
     char ch = *end;
     if (!isalnum(ch) && '_' != ch)
       break;
+    ++end;
   }
 
   if (end == beg)
@@ -121,6 +125,7 @@ Token Tokenizer::decodeNext()
       {
         int index = beg[0] == 'a' ? kAddressBase : kDataBase;
         index += beg[1] - '0';
+        m_Remain.slice(2);
         return Token(TokenType::kRegister, index);
       }
     }

@@ -8,7 +8,7 @@
 class StringFragment
 {
   const char* m_Ptr = nullptr;
-  int32_t     m_Len = 0;  // 32 bits to be able to stick other things after it more effectively
+  size_t      m_Len = 0;
 
 public:
   StringFragment() = default;
@@ -19,27 +19,28 @@ public:
 
   StringFragment(const char* str)
     : m_Ptr(str)
-    , m_Len(static_cast<int32_t>(strlen(str)))
+    , m_Len(strlen(str))
   {}
 
-  StringFragment(const char* str, size_t len)
+  constexpr StringFragment(const char* str, size_t len)
     : m_Ptr(str)
-    , m_Len(static_cast<int32_t>(len))
+    , m_Len(len)
   {}
 
   StringFragment skip(size_t count) const
   {
-    int32_t mm = std::min(static_cast<int32_t>(count), m_Len);
+    size_t mm = std::min(count, m_Len);
     return StringFragment(m_Ptr + mm, m_Len - mm);
   }
 
-  int length() const { return m_Len; }
+  // Int is convenient for %.* style printfs
+  int length() const { return static_cast<int>(m_Len); }
 
   const char* ptr() const { return m_Ptr; }
 
   StringFragment slice(size_t count)
   {
-    int32_t mm = std::min(static_cast<int32_t>(count), m_Len);
+    size_t mm = std::min(count, m_Len);
 
     StringFragment result(m_Ptr, mm);
 
@@ -51,7 +52,7 @@ public:
 
   char operator[](int index) const
   {
-    assert(index < m_Len);
+    assert(size_t(index) < m_Len);
     return m_Ptr[index];
   }
 
@@ -66,7 +67,7 @@ inline bool operator==(const StringFragment& lhs, const StringFragment& rhs)
 {
   return
     lhs.length() == rhs.length() && 
-    memcmp(lhs.ptr(), rhs.ptr(), lhs.length());
+    0 == memcmp(lhs.ptr(), rhs.ptr(), lhs.length());
 }
 
 inline bool operator!=(const StringFragment& lhs, const StringFragment& rhs)
