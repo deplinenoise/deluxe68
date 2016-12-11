@@ -38,6 +38,20 @@ Build {
       Sources = { "deluxe.cpp", "tokenizer.cpp", "registers.cpp" },
     }
     Default(deluxe)
+
+    local deluxeTest = Program {
+      Name = "deluxe68test",
+      Includes = {
+        "external/gtest/googletest/include",
+        "external/gtest/googletest"
+      },
+      Sources = {
+        "tokenizer.cpp",
+        "tests/deluxetest.cpp",
+        "tests/tokenizer_test.cpp",
+        "external/gtest/googletest/src/gtest-all.cc" },
+    }
+    Default(deluxeTest)
   end,
 
   Configs = {
