@@ -1,5 +1,7 @@
 #pragma once
 
+#include "stringfragment.h"
+
 enum class TokenType
 {
   kAreg,
@@ -7,7 +9,7 @@ enum class TokenType
   kKill,
   kReserve,
   kUnreserve,
-  kRegisterName,
+  kRegister,
   kIdentifier,
   kLeftParen,
   kRightParen,
@@ -16,33 +18,48 @@ enum class TokenType
   kComma,
   kColon,
   kEndOfLine,
+  kSpill,
+  kRestore,
   kUnknown,
-  kInvalid
+  kInvalid,
+  kCount
 };
 
 const char* tokenTypeName(TokenType tt);
 
 struct Token
 {
+  Token() = default;
+
+  Token(TokenType type, StringFragment str)
+    : m_Type(type)
+    , m_String(str)
+  {}
+
+  Token(TokenType type, int registerIndex)
+    : m_Type(type)
+    , m_Register(registerIndex)
+  {}
+
   TokenType m_Type = TokenType::kInvalid;
-  const char* m_Start = nullptr;
-  const char* m_End = nullptr;
+  int m_Register = 0;
+  StringFragment m_String;
 };
 
 class Tokenizer
 {
-  const char* m_Ptr;
+  StringFragment m_Remain;
   Token m_Curr;
 
 public:
-  explicit Tokenizer(const char* p);
+  explicit Tokenizer(StringFragment p);
 
   Token peek();
   Token next();
 
 private:
-  void decodeNext(Token* t);
+  Token decodeNext();
 };
 
-const char* skipWhitespace(const char* p);
+StringFragment skipWhitespace(StringFragment f);
 

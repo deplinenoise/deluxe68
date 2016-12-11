@@ -35,7 +35,7 @@ Build {
   Units = function () 
     local deluxe = Program {
       Name = "deluxe68",
-      Sources = { "deluxe.cpp", "tokenizer.cpp" },
+      Sources = { "deluxe.cpp", "tokenizer.cpp", "registers.cpp" },
     }
     Default(deluxe)
   end,

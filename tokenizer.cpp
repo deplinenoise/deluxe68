@@ -1,4 +1,5 @@
 #include "tokenizer.h"
+#include "registers.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -11,24 +12,28 @@ const char* tokenTypeName(TokenType tt)
     "dreg",
     "kill",
     "reserve",
-    "register name",
+    "unreserve",
+    "registername",
     "identifier",
-    "left paren",
-    "right paren",
+    "leftparen",
+    "rightparen",
     "proc",
     "endproc",
     "comma",
     "colon",
-    "end of line",
+    "endofline",
+    "spill",
+    "restore",
     "unknown",
-    "invalid",
+    "invalid"
   };
+  static_assert(sizeof(names)/sizeof(names[0]) == int(TokenType::kCount), "bad array count");
 
   return names[(int)tt];
 }
 
-Tokenizer::Tokenizer(const char* p)
-  : m_Ptr(p)
+Tokenizer::Tokenizer(StringFragment p)
+  : m_Remain(p)
 {
 }
 
@@ -36,7 +41,7 @@ Token Tokenizer::peek()
 {
   if (m_Curr.m_Type == TokenType::kInvalid)
   {
-    decodeNext(&m_Curr);
+    m_Curr = decodeNext();
   }
   return m_Curr;
 }
@@ -48,41 +53,39 @@ Token Tokenizer::next()
   return result;
 }
 
-void Tokenizer::decodeNext(Token* t)
+Token Tokenizer::decodeNext()
 {
-  auto set_single_char_token = [this, &t](TokenType type)
-  {
-    t->m_Type = type;
-    t->m_Start = m_Ptr;
-    t->m_End = m_Ptr + 1;
-    if (type != TokenType::kEndOfLine)
-      ++m_Ptr;
-  };
+  m_Remain = skipWhitespace(m_Remain);
 
-  m_Ptr = skipWhitespace(m_Ptr);
-
-  switch (m_Ptr[0])
+  if (!m_Remain)
   {
-    case '\0': set_single_char_token(TokenType::kEndOfLine); return;
-    case '(': set_single_char_token(TokenType::kLeftParen); return;
-    case ')': set_single_char_token(TokenType::kRightParen); return;
-    case ',': set_single_char_token(TokenType::kComma); return;
-    case ':': set_single_char_token(TokenType::kColon); return;
+    return Token(TokenType::kEndOfLine, StringFragment());
+  }
+
+  switch (m_Remain[0])
+  {
+    case '(': return Token(TokenType::kLeftParen, m_Remain.slice(1));
+    case ')': return Token(TokenType::kRightParen, m_Remain.slice(1));
+    case ',': return Token(TokenType::kComma, m_Remain.slice(1));
+    case ':': return Token(TokenType::kColon, m_Remain.slice(1));
     default: break;
   }
 
-  const char* end = m_Ptr;
-  while (isalnum(*end) || '_' == *end)
+  const char* beg = m_Remain.ptr();
+  const char* end = beg;
+  for (int i = 0, max = m_Remain.length(); i < max; ++i)
   {
-    ++end;
+    char ch = *end;
+    if (!isalnum(ch) && '_' != ch)
+      break;
   }
 
-  if (end == m_Ptr)
+  if (end == beg)
   {
-    return set_single_char_token(TokenType::kUnknown);
+    return Token(TokenType::kUnknown, StringFragment());
   }
 
-  size_t len = end - m_Ptr;
+  size_t len = end - beg;
 
   static struct Keyword {
     size_t len;
@@ -96,49 +99,45 @@ void Tokenizer::decodeNext(Token* t)
     { 9, "unreserve", TokenType::kUnreserve },
     { 4, "proc",      TokenType::kProc },
     { 7, "endproc",   TokenType::kEndProc },
+    { 5, "spill",     TokenType::kSpill },
+    { 7, "restore",   TokenType::kRestore },
   };
 
   for (size_t i = 0; i < sizeof(keywords)/sizeof(keywords[0]); ++i)
   {
     if (keywords[i].len != len)
       continue;
-    if (0 != memcmp(keywords[i].text, m_Ptr, len))
+    if (0 != memcmp(keywords[i].text, beg, len))
       continue;
 
-    t->m_Type = keywords[i].type;
-    t->m_Start = m_Ptr;
-    t->m_End = end;
-    m_Ptr = end;
-    return;
+    return Token(keywords[i].type, m_Remain.slice(len));
   }
 
   if (len == 2)
   {
-    if (m_Ptr[0] == 'a' || m_Ptr[0] == 'd')
+    if (beg[0] == 'a' || beg[0] == 'd')
     {
-      if (m_Ptr[1] >= '0' && m_Ptr[1] <= '7')
+      if (beg[1] >= '0' && beg[1] <= '7')
       {
-        t->m_Type = TokenType::kRegisterName;
-        t->m_Start = m_Ptr;
-        t->m_End = end;
-        m_Ptr = end;
-        return;
+        int index = beg[0] == 'a' ? kAddressBase : kDataBase;
+        index += beg[1] - '0';
+        return Token(TokenType::kRegister, index);
       }
     }
   }
 
-  t->m_Type = TokenType::kIdentifier;
-  t->m_Start = m_Ptr;
-  t->m_End = end;
-  m_Ptr = end;
+  return Token(TokenType::kIdentifier, m_Remain.slice(len));
 }
 
-const char* skipWhitespace(const char* p)
+StringFragment skipWhitespace(StringFragment input)
 {
-  while (isspace(*p))
+  for (int i = 0, count = input.length(); i < count; ++i)
   {
-    ++p;
+    if (!isspace(input[i]))
+    {
+      return input.skip(i);
+    }
   }
-  return p;
+  return StringFragment();
 }
 
