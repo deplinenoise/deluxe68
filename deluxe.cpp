@@ -684,6 +684,8 @@ void Deluxe68::generateOutput(FILE* f) const
         fprintf(f, "\t\trts\n\n");
         break;
       case OutputKind::kStackVar:
+        // FIXME: This is broken for word references, needs an additional +2, but we don't know that.
+        // Similarily bytes need a +3.
         fprintf(f, "%d(sp)", elem.m_IntValue);
         break;
     }
