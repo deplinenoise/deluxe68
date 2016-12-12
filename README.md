@@ -29,6 +29,15 @@ automatically reserved and will never be allocated:
                 @areg   ptr
                 lea     foo(pc),@ptr
 
+### Killing registers
+
+Use `@kill` to return a register to the pool:
+
+                @dreg   a
+                [.. code using @a ..]
+                @kill   a
+                moveq   #0,@a           ; now generates an error!
+
 ### Using allocated registers
 
 You can subsitute `@name` for a register in any instruction or macro
