@@ -9,9 +9,7 @@ for you.
 
 Usage is simple:
 
-```
-  deluxe68 input.s output.s
-```
+    deluxe68 input.s output.s
 
 ## Marking up source code
 
@@ -21,19 +19,15 @@ The following extensions are provided:
 
 To pull from the data register pool, use `@dreg`:
 
-```
-		@dreg	a, b, [...]
-		moveq	#0,@a
-		moveq	#1,@b
-```
+                @dreg   a, b, [...]
+                moveq   #0,@a
+                moveq   #1,@b
 
 Similarly, `@areg` allocates address registers. The stack pointer is
 automatically reserved and will never be allocated:
 
-```
-		@areg	ptr
-		lea	foo(pc),@ptr
-```
+                @areg   ptr
+                lea     foo(pc),@ptr
 
 ### Using allocated registers
 
@@ -47,26 +41,22 @@ code.
 
 To explicitly spill a named register to the stack (returning it to the pool) you can use `@spill`:
 
-```
-		@dreg	a
-		moveq	#0,@a
-		@spill	a		; a is now on stack
-		...
-		...			; more code involving more data register allocation
-		...
-		@restore a		; a is now back in the same register it lived in before
-```
+                @dreg   a
+                moveq   #0,@a
+                @spill  a               ; a is now on stack
+                ...
+                ...                     ; more code involving more data register allocation
+                ...
+                @restore a              ; a is now back in the same register it lived in before
 
 `@spill` and `@restore` can also work with real registers, which is useful when
 you want to call some external code using a particular calling interface:
 
-```
-		@spill	a0,d1
-		move.l	@foo,a0
-		move.l	@bar,d1
-		bsr	SomeExternalCode
-		@restore a0,d1
-```
+                @spill  a0,d1
+                move.l  @foo,a0
+                move.l  @bar,d1
+                bsr     SomeExternalCode
+                @restore a0,d1
 
 If `a0` or `d1` are not allocated, the spill does nothing.
 
@@ -84,6 +74,44 @@ place, and also emits the `rts` instruction.
 Any registers declared in the procedure header are automatically live and not
 available for allocation in the procedure. You can however `@kill` them to
 return them to the pool.
+
+### Example
+
+This input:
+
+                        @proc   Foo(a0:ptr, d0:count)
+
+                        @dreg   sum
+
+                        moveq   #0,@sum
+                        subq    #1,@count
+        .loop           add.w   (@ptr)+,@sum
+                        dbf     @count,.loop
+
+                        move.w  @sum,d0
+                        @endproc
+
+Generates the following output:
+
+                        ; @proc   Foo(a0:ptr, d0:count)
+                        ; live reg a0 => ptr
+                        ; live reg d0 => count
+
+        Foo:
+                        movem.l d1,-(sp)
+
+                        ; @dreg   sum
+                        ; live reg d1 => sum
+
+                        moveq   #0,d1
+                        subq    #1,d0
+        .loop           add.w   (a0)+,d1
+                        dbf     d0,.loop
+
+                        move.w  d1,d0
+                        ; @endproc
+                        movem.l (sp)+,d1
+                        rts
 
 ### License
 
