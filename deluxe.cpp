@@ -19,7 +19,8 @@ enum class OutputKind
   kSpill,
   kRestore,
   kProcHeader,
-  kProcFooter
+  kProcFooter,
+  kStackVar
 };
 
 struct ProcedureDef
@@ -31,11 +32,11 @@ struct OutputElement
 {
   OutputElement() = default;
   constexpr explicit OutputElement(StringFragment f) : m_String(f) {}
-  explicit OutputElement(OutputKind kind, int regMask) : m_RegisterMask(regMask), m_Kind(kind) {}
+  explicit OutputElement(OutputKind kind, int intVal) : m_IntValue(intVal), m_Kind(kind) {}
   explicit OutputElement(OutputKind kind, StringFragment f) : m_String(f), m_Kind(kind) {}
 
   StringFragment m_String;
-  int            m_RegisterMask = 0;
+  int            m_IntValue = 0;
   OutputKind     m_Kind = OutputKind::kStringLiteral;
 };
 
@@ -58,7 +59,8 @@ class Deluxe68
 
   struct RegState
   {
-    StringFragment m_AllocatingVarName;
+    StringFragment              m_AllocatingVarName;
+    std::vector<StringFragment> m_SpilledVars;
   };
 
   uint32_t m_AllocatedRegs;
@@ -70,9 +72,11 @@ class Deluxe68
   {
     uint8_t m_RegIndex = 0;
     uint8_t m_Spilled = 0;
+    int     m_StackSlot = 0;
     int     m_AllocatedLine = 0;
   };
 
+  int m_SpillStackDepth = 0;
   std::unordered_map<StringFragment, RegAlloc> m_LiveRegs;
   std::unordered_map<StringFragment, ProcedureDef> m_Procedures;
 
@@ -444,6 +448,11 @@ void Deluxe68::spill(Tokenizer& tokenizer)
     {
       int regIndex = idToken.m_Register;
       id = m_Registers[regIndex].m_AllocatingVarName;
+
+      if (!id)
+      {
+        continue;
+      }
     }
     else
     {
@@ -465,13 +474,16 @@ void Deluxe68::spill(Tokenizer& tokenizer)
       continue;
     }
 
+    alloc.m_StackSlot = m_SpillStackDepth++;
     alloc.m_Spilled = 1;
 
     int regIndex = alloc.m_RegIndex;
 
     m_AllocatedRegs &= ~(1 << regIndex);
     savedRegs |= 1 << regIndex;
+
     m_Registers[regIndex].m_AllocatingVarName = StringFragment();
+    m_Registers[regIndex].m_SpilledVars.push_back(id);
 
   } while (accept(tokenizer, TokenType::kComma));
 
@@ -485,9 +497,30 @@ void Deluxe68::restore(Tokenizer& tokenizer)
   do
   {
     Token idToken;
-    if (!expect(tokenizer, TokenType::kIdentifier, &idToken))
+    StringFragment id;
+
+    if (accept(tokenizer, TokenType::kIdentifier, &idToken))
+    {
+      id = idToken.m_String;
+    }
+    else if (expect(tokenizer, TokenType::kRegister, &idToken))
+    {
+      int registerIndex = idToken.m_Register;
+      if (m_Registers[registerIndex].m_SpilledVars.empty())
+      {
+        // This is more of an information tidbit to the programmer.
+        // We allow spill to take any regs, and just don't spill them if they're unused.
+        // This is symmetrical
+        //error("register %s not spilled here\n", regName(registerIndex));
+        continue;
+      }
+      id = m_Registers[registerIndex].m_SpilledVars.back();
+      m_Registers[registerIndex].m_SpilledVars.pop_back();
+    }
+    else
+    {
       return;
-    StringFragment id = idToken.m_String;
+    }
 
     auto it = m_LiveRegs.find(id);
     if (it == m_LiveRegs.end())
@@ -637,19 +670,21 @@ void Deluxe68::generateOutput(FILE* f) const
         fprintf(f, "%.*s", elem.m_String.length(), elem.m_String.ptr());
         break;
       case OutputKind::kSpill:
-        printSpill(f, elem.m_RegisterMask);
+        printSpill(f, elem.m_IntValue);
         break;
       case OutputKind::kRestore:
-        printRestore(f, elem.m_RegisterMask);
+        printRestore(f, elem.m_IntValue);
         break;
       case OutputKind::kProcHeader:
         fprintf(f, "\n%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
         printSpill(f, usedRegsForProcecure(elem.m_String));
         break;
-
       case OutputKind::kProcFooter:
         printRestore(f, usedRegsForProcecure(elem.m_String));
         fprintf(f, "\t\trts\n\n");
+        break;
+      case OutputKind::kStackVar:
+        fprintf(f, "%d(sp)", elem.m_IntValue);
         break;
     }
   }
@@ -736,9 +771,18 @@ void Deluxe68::handleRegularLine(StringFragment line)
         if (it == m_LiveRegs.end())
         {
           error("unknown register '%.*s' referenced\n", varName.length(), varName.ptr());
+          continue;
+        }
+        const RegAlloc& alloc = it->second;
+
+        if (alloc.m_Spilled)
+        {
+          // Use stack position
+          output(OutputElement(OutputKind::kStackVar, 4 * (m_SpillStackDepth - alloc.m_StackSlot - 1)));
         }
         else
         {
+          // Live.
           output(OutputElement(StringFragment(regName(it->second.m_RegIndex), 2)));
         }
       }
@@ -749,6 +793,11 @@ void Deluxe68::handleRegularLine(StringFragment line)
       }
 
       i = 0; // restart
+    }
+    else if (line[i] == ';')
+    {
+      output(OutputElement(line));
+      break;
     }
     else
     {
