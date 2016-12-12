@@ -26,6 +26,7 @@ enum class OutputKind
 struct ProcedureDef
 {
   uint32_t m_UsedRegs = 0;
+  uint32_t m_InputRegs = 0;
 };
 
 struct OutputElement
@@ -354,6 +355,8 @@ void Deluxe68::proc(Tokenizer& tokenizer)
 
   expect(tokenizer, TokenType::kLeftParen);
 
+  int inputRegMask = 0;
+
   do
   {
     Token reg;
@@ -367,6 +370,8 @@ void Deluxe68::proc(Tokenizer& tokenizer)
     if (!expect(tokenizer, TokenType::kIdentifier, &identToken))
       return;
 
+    inputRegMask |= 1 << reg.m_Register;
+
     doAllocate(identToken.m_String, reg.m_Register);
 
   } while (accept(tokenizer, TokenType::kComma));
@@ -375,6 +380,8 @@ void Deluxe68::proc(Tokenizer& tokenizer)
   expect(tokenizer, TokenType::kEndOfLine);
 
   output(OutputElement(OutputKind::kProcHeader, ident.m_String));
+
+  m_CurrentProc.m_InputRegs = inputRegMask;
 }
 
 void Deluxe68::endProc(Tokenizer& tokenizer)
@@ -707,7 +714,7 @@ uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
   }
 
   const ProcedureDef& procDef = iter->second;
-  return procDef.m_UsedRegs;
+  return procDef.m_UsedRegs & ~(procDef.m_InputRegs);
 }
 
 void Deluxe68::printSpill(FILE* f, uint32_t regMask)
