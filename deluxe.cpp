@@ -561,6 +561,12 @@ void Deluxe68::killAll()
   m_LiveRegs.clear();
   m_AllocatedRegs = 0;
   m_ReservedRegs = 0;
+
+  for (int i = 0; i < kRegisterCount; ++i)
+  {
+    m_Registers[i].m_AllocatingVarName = StringFragment();
+    m_Registers[i].m_SpilledVars.clear();
+  }
 }
 
 bool Deluxe68::expect(Tokenizer& tokenizer, TokenType type, Token* out)
