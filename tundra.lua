@@ -10,8 +10,9 @@ local common = {
       { "-Wall", "-Werror", "-Wextra", "-Wno-unused-parameter", "-Wno-unused-function"; Config = { "*-gcc-*", "*-clang-*" } },
 
       -- MSVC config
-      { "/MD"; Config = "*-msvc-debug" },
-      { "/MT"; Config = { "*-msvc-production", "*-msvc-release" } },
+      { "/EHsc"; Config = "*-msvc-*" },
+      { "/MDd"; Config = "*-msvc-debug" },
+      { "/MTd"; Config = { "*-msvc-production", "*-msvc-release" } },
       {
         "/wd4127", -- conditional expression is constant
         "/wd4100", -- unreferenced formal parameter
@@ -27,7 +28,7 @@ local common = {
     },
   },
   ReplaceEnv = {
-    LD = "$(CXX)"
+    LD = { "$(CXX)"; Config = { "*-clang-*", "*-gcc-*" } },
   },
 }
 
@@ -59,7 +60,7 @@ Build {
       Name = "win64-msvc",
       DefaultOnHost = "windows",
       Inherit = common,
-      Tools = { { "msvc-winsdk"; TargetArch = "x64" }, },
+      Tools = { { "msvc-vs2015"; TargetArch = "x64" }, },
     },
 
     Config {
