@@ -9,29 +9,6 @@ enum Registers
 
   kRegisterCount = 16,
 
-  // Data registers
-  kD0Flag          = 1 << kD0,
-  kD1Flag          = 1 << kD1,
-  kD2Flag          = 1 << kD2,
-  kD3Flag          = 1 << kD3,
-  kD4Flag          = 1 << kD4,
-  kD5Flag          = 1 << kD5,
-  kD6Flag          = 1 << kD6,
-  kD7Flag          = 1 << kD7,
-
-  // Address registers
-  kA0Flag          = 1 << kA0,
-  kA1Flag          = 1 << kA1,
-  kA2Flag          = 1 << kA2,
-  kA3Flag          = 1 << kA3,
-  kA4Flag          = 1 << kA4,
-  kA5Flag          = 1 << kA5,
-  kA6Flag          = 1 << kA6,
-  kA7Flag          = 1 << kA7,
-
-  kDataRegisterMask = 0x00ff,
-  kAddrRegisterMask = 0xff00,
-
   kDataBase         = kD0,
   kAddressBase      = kA0,
 };

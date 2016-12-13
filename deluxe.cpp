@@ -617,6 +617,8 @@ void Deluxe68::killAll()
   {
     m_Registers[i].reset();
   }
+
+  m_Registers[kA7].setReserved(true);
 }
 
 bool Deluxe68::expect(Tokenizer& tokenizer, TokenType type, Token* out)
@@ -690,19 +692,23 @@ bool Deluxe68::dataLeft() const
 
 int Deluxe68::findFirstFree(RegisterClass regClass) const
 {
-  int offset = 0;
+  int top = 0;
+  int bot = 0;
  
   switch (regClass)
   {
     case kAddress:
-      offset = kAddressBase;
+      top = kA7;      // User can explicitly unreserve to make it available.
+      bot = kA0;
       break;
     case kData:
-      offset = kDataBase;
+      top = kD7;
+      bot = kD0;
       break;
   }
 
-  for (int i = offset; i < offset + 8; ++i)
+  // Allocate from the top down.
+  for (int i = top; i >= bot; --i)
   {
     if (!m_Registers[i].isInUse())
       return i;
