@@ -60,12 +60,51 @@ class Deluxe68
 
   struct RegState
   {
+    static constexpr uint32_t kFlagAllocated = 1 << 0;
+    static constexpr uint32_t kFlagReserved  = 1 << 1;
+
+    uint32_t                    m_Flags = 0;
     StringFragment              m_AllocatingVarName;
     std::vector<StringFragment> m_SpilledVars;
-  };
 
-  uint32_t m_AllocatedRegs;
-  uint32_t m_ReservedRegs;
+    bool isAllocated() const { return 0 != (m_Flags & kFlagAllocated); }
+    bool isReserved() const { return 0 != (m_Flags & kFlagReserved); }
+    bool isInUse() const { return 0 != (m_Flags & (kFlagReserved | kFlagAllocated)); }
+
+    void setAllocated(bool state)
+    {
+      if (state)
+        m_Flags |= kFlagAllocated;
+      else
+        m_Flags &= ~kFlagAllocated;
+    }
+
+    void setReserved(bool state)
+    {
+      if (state)
+        m_Flags |= kFlagReserved;
+      else
+        m_Flags &= ~kFlagReserved;
+    }
+
+    void reset()
+    {
+      m_Flags = 0;
+      m_AllocatingVarName = StringFragment();
+      m_SpilledVars.clear();
+    }
+
+    void spill()
+    {
+      setAllocated(false);
+      m_SpilledVars.push_back(m_AllocatingVarName);
+      m_AllocatingVarName = StringFragment();
+    }
+
+    void restore()
+    {
+    }
+  };
 
   RegState m_Registers[kRegisterCount];
 
@@ -276,7 +315,7 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
 
 bool Deluxe68::doAllocate(StringFragment id, int regIndex)
 {
-  if ((m_AllocatedRegs | m_ReservedRegs) & (1 << regIndex))
+  if (m_Registers[regIndex].isInUse())
   {
     StringFragment owner = m_Registers[regIndex].m_AllocatingVarName;
     error("register %.*s not free here (used by %.*s)\n", 2, regName(regIndex), owner.length(), owner.ptr());
@@ -289,7 +328,7 @@ bool Deluxe68::doAllocate(StringFragment id, int regIndex)
     a.m_AllocatedLine = m_LineNumber;
     m_LiveRegs.insert(std::make_pair(id, a));
 
-    m_AllocatedRegs |= 1 << regIndex;
+    m_Registers[regIndex].setAllocated(true);
     m_CurrentProc.m_UsedRegs |= 1 << regIndex;
 
     output(OutputElement(StringFragment("\t\t; live reg ")));
@@ -323,7 +362,7 @@ void Deluxe68::killRegs(Tokenizer& tokenizer)
     }
 
     const RegAlloc& a = it->second;
-    m_AllocatedRegs &= ~(1 << a.m_RegIndex);
+    m_Registers[a.m_RegIndex].setAllocated(false);
     m_LiveRegs.erase(it);
 
   } while (accept(tokenizer, TokenType::kComma));
@@ -407,13 +446,13 @@ void Deluxe68::reserve(Tokenizer& tokenizer)
 
     int regIndex = reg.m_Register;
 
-    if ((m_AllocatedRegs | m_ReservedRegs) & (1 << regIndex))
+    if (m_Registers[regIndex].isInUse())
     {
       error("register %s not free here\n", regName(regIndex));
       continue;
     }
 
-    m_ReservedRegs |= 1 << regIndex;
+    m_Registers[regIndex].setReserved(true);
 
   } while (accept(tokenizer, TokenType::kComma));
 }
@@ -428,13 +467,13 @@ void Deluxe68::unreserve(Tokenizer& tokenizer)
 
     int regIndex = reg.m_Register;
 
-    if (0 == (m_ReservedRegs & (1 << regIndex)))
+    if (m_Registers[regIndex].isReserved())
     {
       error("register %s not reserved here\n", regName(regIndex));
       continue;
     }
 
-    m_ReservedRegs &= ~(1 << regIndex);
+    m_Registers[regIndex].setReserved(false);
 
   } while (accept(tokenizer, TokenType::kComma));
 }
@@ -454,12 +493,13 @@ void Deluxe68::spill(Tokenizer& tokenizer)
     else if (expect(tokenizer, TokenType::kRegister, &idToken))
     {
       int regIndex = idToken.m_Register;
-      id = m_Registers[regIndex].m_AllocatingVarName;
 
-      if (!id)
+      if (!m_Registers[regIndex].isInUse())
       {
         continue;
       }
+
+      id = m_Registers[regIndex].m_AllocatingVarName;
     }
     else
     {
@@ -486,11 +526,9 @@ void Deluxe68::spill(Tokenizer& tokenizer)
 
     int regIndex = alloc.m_RegIndex;
 
-    m_AllocatedRegs &= ~(1 << regIndex);
     savedRegs |= 1 << regIndex;
 
-    m_Registers[regIndex].m_AllocatingVarName = StringFragment();
-    m_Registers[regIndex].m_SpilledVars.push_back(id);
+    m_Registers[regIndex].spill();
 
   } while (accept(tokenizer, TokenType::kComma));
 
@@ -545,16 +583,24 @@ void Deluxe68::restore(Tokenizer& tokenizer)
     }
 
     int regIndex = alloc.m_RegIndex;
-    if (m_AllocatedRegs &= (1 << regIndex))
+
+    if (m_Registers[regIndex].isInUse())
     {
-      StringFragment owner = m_Registers[regIndex].m_AllocatingVarName;
-      error("register %.*s home slot %s is occupied by %.*s\n", id.length(), id.ptr(), regName(regIndex), owner.length(), owner.ptr());
+      if (m_Registers[regIndex].isAllocated())
+      {
+        StringFragment owner = m_Registers[regIndex].m_AllocatingVarName;
+        error("register %.*s home slot %s is occupied by %.*s\n", id.length(), id.ptr(), regName(regIndex), owner.length(), owner.ptr());
+      }
+      else
+      {
+        error("register %.*s home slot %s is reserved\n", id.length(), id.ptr(), regName(regIndex));
+      }
       continue;
     }
 
     alloc.m_Spilled = 0;
 
-    m_AllocatedRegs &= ~(1 << regIndex);
+    m_Registers[regIndex].setAllocated(true);
     restoredRegs |= 1 << regIndex;
     m_Registers[regIndex].m_AllocatingVarName = id;
 
@@ -566,13 +612,10 @@ void Deluxe68::restore(Tokenizer& tokenizer)
 void Deluxe68::killAll()
 {
   m_LiveRegs.clear();
-  m_AllocatedRegs = 0;
-  m_ReservedRegs = 0;
 
   for (int i = 0; i < kRegisterCount; ++i)
   {
-    m_Registers[i].m_AllocatingVarName = StringFragment();
-    m_Registers[i].m_SpilledVars.clear();
+    m_Registers[i].reset();
   }
 }
 
@@ -647,26 +690,22 @@ bool Deluxe68::dataLeft() const
 
 int Deluxe68::findFirstFree(RegisterClass regClass) const
 {
-  uint32_t classBits = 0;
   int offset = 0;
  
   switch (regClass)
   {
     case kAddress:
-      classBits = (m_AllocatedRegs | m_ReservedRegs) >> 8;
       offset = kAddressBase;
       break;
     case kData:
-      classBits = (m_AllocatedRegs | m_ReservedRegs) & 0xff;
       offset = kDataBase;
       break;
   }
 
-  // TODO: PERF: Bit scan forward.
-  for (int i = 0, mask = 1; i < 8; ++i, mask <<= 1)
+  for (int i = offset; i < offset + 8; ++i)
   {
-    if (0 == (classBits & mask))
-      return i + offset;
+    if (!m_Registers[i].isInUse())
+      return i;
   }
 
   return -1;
