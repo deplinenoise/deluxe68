@@ -532,7 +532,10 @@ void Deluxe68::spill(Tokenizer& tokenizer)
 
   } while (accept(tokenizer, TokenType::kComma));
 
-  output(OutputElement(OutputKind::kSpill, savedRegs));
+  if (0 != savedRegs)
+  {
+    output(OutputElement(OutputKind::kSpill, savedRegs));
+  }
 }
 
 void Deluxe68::restore(Tokenizer& tokenizer)
@@ -606,7 +609,10 @@ void Deluxe68::restore(Tokenizer& tokenizer)
 
   } while (accept(tokenizer, TokenType::kComma));
 
-  output(OutputElement(OutputKind::kRestore, restoredRegs));
+  if (0 != restoredRegs)
+  {
+    output(OutputElement(OutputKind::kRestore, restoredRegs));
+  }
 }
 
 void Deluxe68::killAll()
