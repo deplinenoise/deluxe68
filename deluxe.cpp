@@ -856,7 +856,6 @@ void Deluxe68::handleRegularLine(StringFragment line)
     }
     else if (line[i] == ';')
     {
-      output(OutputElement(line));
       break;
     }
     else
