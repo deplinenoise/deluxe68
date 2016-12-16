@@ -38,6 +38,9 @@ public:
 
   const char* ptr() const { return m_Ptr; }
 
+  const char* begin() const { return ptr(); }
+  const char* end() const { return ptr() + length(); }
+
   StringFragment slice(size_t count)
   {
     size_t mm = std::min(count, m_Len);

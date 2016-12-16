@@ -34,9 +34,21 @@ void Deluxe68::error(const char *fmt, ...)
 
 void Deluxe68::run()
 {
+  int lineDelta = -1;
   while (dataLeft())
   {
     StringFragment line = nextLine();
+
+    if (m_EmitLineDirectives)
+    {
+      int currentLineDelta = m_CurrentOutputLine - m_LineNumber;
+
+      if (currentLineDelta != lineDelta)
+      {
+        output(OutputElement(OutputKind::kLineDirective, m_LineNumber + 1));
+        lineDelta = currentLineDelta;
+      }
+    }
 
     //printf("processing line: '%.*s'\n", line.length(), line.ptr());
     ++m_LineNumber;
@@ -578,17 +590,20 @@ void Deluxe68::generateOutput(FILE* f) const
         printRestore(f, elem.m_IntValue);
         break;
       case OutputKind::kProcHeader:
-        fprintf(f, "\n%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
+        fprintf(f, "%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
         printSpill(f, usedRegsForProcecure(elem.m_String));
         break;
       case OutputKind::kProcFooter:
         printRestore(f, usedRegsForProcecure(elem.m_String));
-        fprintf(f, "\t\trts\n\n");
+        fprintf(f, "\t\trts\n");
         break;
       case OutputKind::kStackVar:
         // FIXME: This is broken for word references, needs an additional +2, but we don't know that.
         // Similarily bytes need a +3.
         fprintf(f, "%d(sp)", elem.m_IntValue);
+        break;
+      case OutputKind::kLineDirective:
+        fprintf(f, "\t\ttbl_line %d %s\n", elem.m_IntValue, m_Filename);
         break;
     }
   }
@@ -636,6 +651,31 @@ void Deluxe68::printMovemList(FILE* f, uint32_t selectedRegs)
 void Deluxe68::output(OutputElement elem)
 {
   m_OutputSchedule.push_back(elem);
+
+  switch (elem.m_Kind)
+  {
+    case OutputKind::kStringLiteral:
+      for (char ch : elem.m_String)
+      {
+        if ('\n' == ch)
+          ++m_CurrentOutputLine;
+      }
+      break;
+
+    case OutputKind::kSpill:
+    case OutputKind::kRestore:
+      ++m_CurrentOutputLine;
+      break;
+
+    case OutputKind::kProcHeader:
+      m_CurrentOutputLine += 2;
+      break;
+    case OutputKind::kProcFooter:
+      m_CurrentOutputLine += 2;
+      break;
+    default:
+      break;
+  }
 }
 
 void Deluxe68::newline()
@@ -643,6 +683,7 @@ void Deluxe68::newline()
   static constexpr OutputElement nl(StringFragment("\n", 1));
 
   m_OutputSchedule.push_back(nl);
+  ++m_CurrentOutputLine;
 }
 
 void Deluxe68::handleRegularLine(StringFragment line)

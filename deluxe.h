@@ -19,7 +19,8 @@ enum class OutputKind
   kRestore,
   kProcHeader,
   kProcFooter,
-  kStackVar
+  kStackVar,
+  kLineDirective
 };
 
 struct ProcedureDef
@@ -55,6 +56,7 @@ class Deluxe68
   const char* m_ParsePoint;
 
   bool m_EmitLineDirectives = false;
+  int m_CurrentOutputLine = 0;
 
   StringFragment m_CurrentProcName;
   ProcedureDef m_CurrentProc;
