@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 Deluxe68::Deluxe68(const char* ifn, const char* data, size_t len, bool emitLineDirectives)
   : m_InputData(data)
