@@ -109,6 +109,10 @@ void Deluxe68::parseLine(StringFragment line)
       restore(tokenizer);
       break;
 
+    case TokenType::kRename:
+      rename(tokenizer);
+      break;
+
     default:
       error("unsupported syntax: %s: %.*s\n", tokenTypeName(t.m_Type), line.length(), line.ptr());
       return;
@@ -464,6 +468,43 @@ void Deluxe68::restore(Tokenizer& tokenizer)
   {
     output(OutputElement(OutputKind::kRestore, restoredRegs));
   }
+}
+
+void Deluxe68::rename(Tokenizer& tokenizer)
+{
+  Token tokenOld, tokenNew;
+
+  if (!expect(tokenizer, TokenType::kIdentifier, &tokenOld))
+    return;
+
+  if (!expect(tokenizer, TokenType::kIdentifier, &tokenNew))
+    return;
+
+  StringFragment idOld = tokenOld.m_String;
+  StringFragment idNew = tokenNew.m_String;
+
+  if (!expect(tokenizer, TokenType::kEndOfLine))
+    return;
+
+  if (m_LiveRegs.find(idNew) != m_LiveRegs.end())
+  {
+    error("id %.*s already allocated\n", idNew.length(), idNew.ptr());
+    return;
+  }
+
+  auto it = m_LiveRegs.find(idOld);
+  if (it == m_LiveRegs.end())
+  {
+    error("id %.*s not allocated\n", idOld.length(), idOld.ptr());
+    return;
+  }
+
+  RegAlloc alloc = it->second;
+
+  m_LiveRegs.erase(it);
+  m_LiveRegs.insert(std::make_pair(idNew, alloc));
+
+  m_Registers[alloc.m_RegIndex].handleRename(idOld, idNew);
 }
 
 void Deluxe68::killAll()

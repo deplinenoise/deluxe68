@@ -107,6 +107,22 @@ class Deluxe68
     void restore()
     {
     }
+
+    void handleRename(StringFragment idOld, StringFragment idNew)
+    {
+      if (m_AllocatingVarName == idOld)
+      {
+        m_AllocatingVarName = idNew;
+      }
+
+      for (auto& str : m_SpilledVars)
+      {
+        if (str == idOld)
+        {
+          str = idNew;
+        }
+      }
+    }
   };
 
   RegState m_Registers[kRegisterCount];
@@ -149,6 +165,7 @@ private:
   void unreserve(Tokenizer& tokenizer);
   void spill(Tokenizer& tokenizer);
   void restore(Tokenizer& tokenizer);
+  void rename(Tokenizer& tokenizer);
 
   void output(OutputElement elem);
   void handleRegularLine(StringFragment line);
