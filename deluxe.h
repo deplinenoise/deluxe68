@@ -145,6 +145,7 @@ public:
   ~Deluxe68();
 
   void error(const char *fmt, ...);
+  void errorForLine(int line, const char *fmt, ...);
 
   void run();
   void generateOutput(FILE* f) const;

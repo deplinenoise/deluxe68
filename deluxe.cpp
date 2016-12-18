@@ -33,6 +33,20 @@ void Deluxe68::error(const char *fmt, ...)
   ++m_ErrorCount;
 }
 
+void Deluxe68::errorForLine(int lineNumber, const char *fmt, ...)
+{
+  if (lineNumber)
+    fprintf(stderr, "%s(%d): ", m_Filename, lineNumber);
+  else
+    fprintf(stderr, "%s: ", m_Filename);
+
+  va_list a;
+  va_start(a, fmt);
+  vfprintf(stderr, fmt, a);
+  va_end(a);
+  ++m_ErrorCount;
+}
+
 void Deluxe68::run()
 {
   int lineDelta = -1;
@@ -156,6 +170,24 @@ void Deluxe68::allocRegs(Tokenizer& tokenizer, TokenType regType)
     if (-1 == index)
     {
       error("out of %s registers (allocating %.*s)\n", registerClassName(regClass), id.length(), id.ptr());
+      for (int i = 0; i < kRegisterCount; ++i)
+      {
+        if (m_Registers[i].isAllocated())
+        {
+          StringFragment owner = m_Registers[i].m_AllocatingVarName;
+          int lineNo = 0;
+          const auto it = m_LiveRegs.find(owner);
+          if (it != m_LiveRegs.end())
+          {
+            lineNo = it->second.m_AllocatedLine;
+          }
+          errorForLine(lineNo, "%s allocated: %.*s\n", regName(i), owner.length(), owner.ptr());
+        }
+        else if (m_Registers[i].isReserved())
+        {
+          error("%s: (reserved)\n", regName(i));
+        }
+      }
       continue;
     }
 
