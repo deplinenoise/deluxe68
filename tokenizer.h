@@ -20,6 +20,7 @@ enum class TokenType
   kEndOfLine,
   kSpill,
   kRestore,
+  kRename,
   kUnknown,
   kInvalid,
   kCount

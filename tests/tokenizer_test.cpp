@@ -81,7 +81,7 @@ TEST(Tokenizer, Comments)
 
 TEST(Tokenizer, Keywords)
 {
-  Tokenizer tokenizer(StringFragment(" spill restore aregdreg areg dreg kill reserve proc endproc "));
+  Tokenizer tokenizer(StringFragment(" spill restore aregdreg areg dreg kill reserve proc endproc rename "));
 
   static const TokenType expected[] =
   {
@@ -93,7 +93,8 @@ TEST(Tokenizer, Keywords)
     TokenType::kKill,
     TokenType::kReserve,
     TokenType::kProc,
-    TokenType::kEndProc
+    TokenType::kEndProc,
+    TokenType::kRename
   };
 
   for (size_t i = 0; i < sizeof(expected)/sizeof(expected[0]); ++i)

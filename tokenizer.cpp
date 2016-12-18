@@ -24,6 +24,7 @@ const char* tokenTypeName(TokenType tt)
     "endofline",
     "spill",
     "restore",
+    "rename",
     "unknown",
     "invalid"
   };
@@ -105,6 +106,7 @@ Token Tokenizer::decodeNext()
     { 7, "endproc",   TokenType::kEndProc },
     { 5, "spill",     TokenType::kSpill },
     { 7, "restore",   TokenType::kRestore },
+    { 6, "rename",    TokenType::kRename },
   };
 
   for (size_t i = 0; i < sizeof(keywords)/sizeof(keywords[0]); ++i)
