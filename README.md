@@ -38,6 +38,23 @@ Use `@kill` to return a register to the pool:
                 @kill   a
                 moveq   #0,@a           ; now generates an error!
 
+### Renaming an allocated register
+
+Often in assembly programming, the purpose of a register changes. You can
+express that by renaming the register:
+
+                ; @xcoordptr = x coordinate buffer
+
+                @dreg	x0,x1
+                move.w	(@xcoordptr)+,@x0
+                move.w	(@xcoordptr)+,@x1
+                sub.w	@x0,@x1
+                @rename @x1,@deltax         ; @x1 is now no longer a coordinate 
+
+                ; ...
+
+                @kill x0,deltax             ; x1 is now gone, and using it will result in an error
+
 ### Using allocated registers
 
 You can subsitute `@name` for a register in any instruction or macro
