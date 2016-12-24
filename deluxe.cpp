@@ -279,30 +279,33 @@ void Deluxe68::proc(Tokenizer& tokenizer)
     m_CurrentProc = ProcedureDef();
   }
 
-  expect(tokenizer, TokenType::kLeftParen);
-
   int inputRegMask = 0;
 
-  do
+  // Allow just proc <ident>, OR proc <ident> (<signature>)
+  if (accept(tokenizer, TokenType::kLeftParen))
   {
-    Token reg;
-    if (!expect(tokenizer, TokenType::kRegister, &reg))
-      return;
+    do
+    {
+      Token reg;
+      if (!expect(tokenizer, TokenType::kRegister, &reg))
+        return;
 
-    if (!expect(tokenizer, TokenType::kColon))
-      return;
+      if (!expect(tokenizer, TokenType::kColon))
+        return;
 
-    Token identToken;
-    if (!expect(tokenizer, TokenType::kIdentifier, &identToken))
-      return;
+      Token identToken;
+      if (!expect(tokenizer, TokenType::kIdentifier, &identToken))
+        return;
 
-    inputRegMask |= 1 << reg.m_Register;
+      inputRegMask |= 1 << reg.m_Register;
 
-    doAllocate(identToken.m_String, reg.m_Register);
+      doAllocate(identToken.m_String, reg.m_Register);
 
-  } while (accept(tokenizer, TokenType::kComma));
+    } while (accept(tokenizer, TokenType::kComma));
 
-  expect(tokenizer, TokenType::kRightParen);
+    expect(tokenizer, TokenType::kRightParen);
+  }
+
   expect(tokenizer, TokenType::kEndOfLine);
 
   output(OutputElement(OutputKind::kProcHeader, ident.m_String));

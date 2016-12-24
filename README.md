@@ -88,8 +88,11 @@ If `a0` or `d1` are not allocated, the spill does nothing.
 
 ### Procedures
 
-Mark a procedure entry point with `@proc ProcedureName(<reg>: name, [<reg>: name ...])`.
-This accomplishes two things:
+Mark a procedure entry point with `@proc ProcedureName(<reg>: name, [<reg>: name ...])`. You can
+also use `@proc ProcedureName` (that is, omitting the register-name part
+entirely) if your procedure has no arguments.
+
+Doing so accomplishes two things:
 
 - It generates an automatic `movem.l` that stores all touched registers to the stack
 - All live registers are killed automatically
@@ -117,7 +120,7 @@ This input:
                         move.w  @sum,d0
                         @endproc
 
-Generates the following output:
+Generates output similar to:
 
                         ; @proc   Foo(a0:ptr, d0:count)
                         ; live reg a0 => ptr
