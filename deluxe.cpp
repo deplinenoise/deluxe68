@@ -697,16 +697,22 @@ uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
 
 void Deluxe68::printSpill(FILE* f, uint32_t regMask)
 {
-  fprintf(f, "\t\tmovem.l ");
-  printMovemList(f, regMask);
-  fprintf(f, ",-(sp)\n");
+  if (regMask)
+  {
+    fprintf(f, "\t\tmovem.l ");
+    printMovemList(f, regMask);
+    fprintf(f, ",-(sp)\n");
+  }
 }
 
 void Deluxe68::printRestore(FILE* f, uint32_t regMask)
 {
-  fprintf(f, "\t\tmovem.l (sp)+,");
-  printMovemList(f, regMask);
-  fprintf(f, "\n");
+  if (regMask)
+  {
+    fprintf(f, "\t\tmovem.l (sp)+,");
+    printMovemList(f, regMask);
+    fprintf(f, "\n");
+  }
 }
 
 void Deluxe68::printMovemList(FILE* f, uint32_t selectedRegs)
