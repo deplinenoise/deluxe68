@@ -357,7 +357,7 @@ void Deluxe68::unreserve(Tokenizer& tokenizer)
 
     int regIndex = reg.m_Register;
 
-    if (m_Registers[regIndex].isReserved())
+    if (!m_Registers[regIndex].isReserved())
     {
       error("register %s not reserved here\n", regName(regIndex));
       continue;
