@@ -53,8 +53,12 @@ Build {
       },
       Sources = {
         "tokenizer.cpp",
+        "deluxe.cpp",
+        "registers.cpp",
         "tests/deluxetest.cpp",
+        "tests/d68test.cpp",
         "tests/tokenizer_test.cpp",
+        "tests/regsave.cpp",
         "external/gtest/googletest/src/gtest-all.cc" },
     }
     Default(deluxeTest)

@@ -384,6 +384,9 @@ void Deluxe68::spill(Tokenizer& tokenizer)
     {
       int regIndex = idToken.m_Register;
 
+      // Track this register for saving in the procedure.
+      m_CurrentProc.m_UsedRegs |= 1 << regIndex;
+
       if (!m_Registers[regIndex].isInUse())
       {
         continue;
@@ -652,38 +655,52 @@ int Deluxe68::findFirstFree(RegisterClass regClass) const
 
 void Deluxe68::generateOutput(FILE* f) const
 {
+  generateOutput([](const char* n, size_t len, void* user_data)
+  {
+    fwrite(n, 1, len, (FILE*)user_data);
+  }, f);
+}
+
+void Deluxe68::generateOutput(PrintCallback* cb, void* user_data) const
+{
+  m_PrintCallback = cb;
+  m_PrintData = user_data;
+
   for (const OutputElement& elem : m_OutputSchedule)
   {
     switch (elem.m_Kind)
     {
       case OutputKind::kStringLiteral:
       case OutputKind::kNamedRegister:
-        fprintf(f, "%.*s", elem.m_String.length(), elem.m_String.ptr());
+        outf("%.*s", elem.m_String.length(), elem.m_String.ptr());
         break;
       case OutputKind::kSpill:
-        printSpill(f, elem.m_IntValue);
+        printSpill(elem.m_IntValue);
         break;
       case OutputKind::kRestore:
-        printRestore(f, elem.m_IntValue);
+        printRestore(elem.m_IntValue);
         break;
       case OutputKind::kProcHeader:
-        fprintf(f, "%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
-        printSpill(f, usedRegsForProcecure(elem.m_String));
+        outf("%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
+        printSpill(usedRegsForProcecure(elem.m_String));
         break;
       case OutputKind::kProcFooter:
-        printRestore(f, usedRegsForProcecure(elem.m_String));
-        fprintf(f, "\t\trts\n");
+        printRestore(usedRegsForProcecure(elem.m_String));
+        outf("\t\trts\n");
         break;
       case OutputKind::kStackVar:
         // FIXME: This is broken for word references, needs an additional +2, but we don't know that.
         // Similarily bytes need a +3.
-        fprintf(f, "%d(sp)", elem.m_IntValue);
+        outf("%d(sp)", elem.m_IntValue);
         break;
       case OutputKind::kLineDirective:
-        fprintf(f, "\t\ttbl_line %d %s\n", elem.m_IntValue, m_Filename);
+        outf("\t\ttbl_line %d %s\n", elem.m_IntValue, m_Filename);
         break;
     }
   }
+
+  m_PrintCallback = nullptr;
+  m_PrintData = nullptr;
 }
 
 uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
@@ -698,34 +715,34 @@ uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
   return procDef.m_UsedRegs & ~(procDef.m_InputRegs);
 }
 
-void Deluxe68::printSpill(FILE* f, uint32_t regMask)
+void Deluxe68::printSpill(uint32_t regMask) const
 {
   if (regMask)
   {
-    fprintf(f, "\t\tmovem.l ");
-    printMovemList(f, regMask);
-    fprintf(f, ",-(sp)\n");
+    outf("\t\tmovem.l ");
+    printMovemList(regMask);
+    outf(",-(sp)\n");
   }
 }
 
-void Deluxe68::printRestore(FILE* f, uint32_t regMask)
+void Deluxe68::printRestore(uint32_t regMask) const
 {
   if (regMask)
   {
-    fprintf(f, "\t\tmovem.l (sp)+,");
-    printMovemList(f, regMask);
-    fprintf(f, "\n");
+    outf("\t\tmovem.l (sp)+,");
+    printMovemList(regMask);
+    outf("\n");
   }
 }
 
-void Deluxe68::printMovemList(FILE* f, uint32_t selectedRegs)
+void Deluxe68::printMovemList(uint32_t selectedRegs) const
 {
   bool printed = false;
   for (int i = 0, mask = 1; i < kRegisterCount; ++i, mask <<= 1)
   {
     if (selectedRegs & mask)
     {
-      fprintf(f, "%s%s", printed ? "/" : "", regName(i));
+      outf("%s%s", printed ? "/" : "", regName(i));
       printed = true;
     }
   }
@@ -838,4 +855,14 @@ void Deluxe68::handleRegularLine(StringFragment line)
   }
 
   newline();
+}
+
+void Deluxe68::outf(const char* fmt, ...) const
+{
+  char line[1024];
+  va_list a;
+  va_start(a, fmt);
+  int len = vsnprintf(line, sizeof line, fmt, a);
+  va_end(a);
+  m_PrintCallback(line, len, m_PrintData);
 }

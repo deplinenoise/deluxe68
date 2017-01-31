@@ -43,10 +43,17 @@ struct OutputElement
 
 class Deluxe68
 {
+public:
+  using PrintCallback = void (const char* buf, size_t len, void* user_data);
+
+private:
   static constexpr size_t kLineMax = 4096;
 
   const char* m_InputData;
   size_t      m_InputLen;
+
+  mutable PrintCallback* m_PrintCallback = nullptr;
+  mutable void* m_PrintData = nullptr;
 
   std::vector<OutputElement> m_OutputSchedule;
 
@@ -149,6 +156,7 @@ public:
 
   void run();
   void generateOutput(FILE* f) const;
+  void generateOutput(PrintCallback* cb, void* user_data) const;
 
   int errorCount() const { return m_ErrorCount; }
 
@@ -173,9 +181,9 @@ private:
   void newline();
 
   uint32_t usedRegsForProcecure(const StringFragment& procName) const;
-  static void printSpill(FILE* f, uint32_t regMask);
-  static void printRestore(FILE* f, uint32_t regMask);
-  static void printMovemList(FILE* f, uint32_t regMask);
+  void printSpill(uint32_t regMask) const;
+  void printRestore(uint32_t regMask) const;
+  void printMovemList(uint32_t regMask) const;
   void killAll();
   bool doAllocate(StringFragment id, int regIndex);
 
@@ -186,5 +194,7 @@ private:
   bool accept(Tokenizer& t, TokenType type, Token* out = nullptr);
 
   int findFirstFree(RegisterClass regClass) const;
+
+  void outf(const char* fmt, ...) const;
 };
 
