@@ -46,6 +46,9 @@ class Deluxe68
 public:
   using PrintCallback = void (const char* buf, size_t len, void* user_data);
 
+public:
+  struct PendingRegisterSpill;
+
 private:
   static constexpr size_t kLineMax = 4096;
 

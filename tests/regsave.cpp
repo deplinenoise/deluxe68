@@ -59,3 +59,60 @@ TEST_F(DeluxeTest, SpillSaves)
         "\t\tmovem.l (sp)+,d0\n"
         "\t\trts\n");
 }
+
+TEST_F(DeluxeTest, StackSlots)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\tmovem.l d6/d7,-(sp)\n"
+        "\t\tmove.l #$aaaaaaaa,d7\n"
+        "\t\tmove.l #$bbbbbbbb,d6\n"
+        "\t\tmovem.l d6/d7,-(sp)\n"
+        "\t\tmove.l 4(sp),d7\n"
+        "\t\tmove.l 0(sp),d6\n"
+        "\t\tbsr ExternalProc\n"
+        "\t\tmovem.l (sp)+,d6/d7\n"
+        "\t\tmovem.l (sp)+,d6/d7\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@proc foo\n"
+        "\t\t@dreg a,b\n"
+        "\t\tmove.l #$aaaaaaaa,@a\n"
+        "\t\tmove.l #$bbbbbbbb,@b\n"
+        "\t\t@spill d6,d7\n"
+        "\t\tmove.l @a,d7\n"
+        "\t\tmove.l @b,d6\n"
+        "\t\tbsr ExternalProc\n"
+        "\t\t@restore d7,d6\n"
+        "\t\t@endproc\n"));
+}
+
+TEST_F(DeluxeTest, StackSlots2)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\tmovem.l d6/d7,-(sp)\n"
+        "\t\tmove.l #$aaaaaaaa,d7\n"
+        "\t\tmove.l #$bbbbbbbb,d6\n"
+        "\t\tmovem.l d6/d7,-(sp)\n"
+        "\t\tmove.l 4(sp),d7\n"
+        "\t\tmove.l 0(sp),d6\n"
+        "\t\tbsr ExternalProc\n"
+        "\t\tmovem.l (sp)+,d6/d7\n"
+        "\t\tmovem.l (sp)+,d6/d7\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@proc foo\n"
+        "\t\t@dreg a,b\n"
+        "\t\tmove.l #$aaaaaaaa,@a\n"
+        "\t\tmove.l #$bbbbbbbb,@b\n"
+        "\t\t@spill d7,d6\n"  // Make sure spill d6,d7 and d7,d6 produce identical results as above StackSlots test
+        "\t\tmove.l @a,d7\n"
+        "\t\tmove.l @b,d6\n"
+        "\t\tbsr ExternalProc\n"
+        "\t\t@restore d7,d6\n"
+        "\t\t@endproc\n"));
+}
+

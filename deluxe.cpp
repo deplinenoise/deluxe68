@@ -368,9 +368,29 @@ void Deluxe68::unreserve(Tokenizer& tokenizer)
   } while (accept(tokenizer, TokenType::kComma));
 }
 
+// This unfortunate bit of complexity is needed to compute the correct stack
+// slots for spilled registers, as movem.l will always write registers in a
+// particular order to memory.
+// 
+// Therefore, we can't know the spilled slot on the stack until we've looked at
+// all the spills involved.
+struct Deluxe68::PendingRegisterSpill
+{
+  int m_RegisterIndex;
+  RegAlloc* m_RegAlloc;
+};
+
+// Note this sorts in the opposite order, so we assign slots to the first things spilled, e.g. a6,a5,a4...d1,d0
+static bool operator<(const Deluxe68::PendingRegisterSpill& lhs, const Deluxe68::PendingRegisterSpill& rhs)
+{
+  return lhs.m_RegisterIndex > rhs.m_RegisterIndex;
+}
+
 void Deluxe68::spill(Tokenizer& tokenizer)
 {
-  int savedRegs = 0;
+  int savedRegMask = 0;
+  int savedRegCount = 0;
+  PendingRegisterSpill pendingSpills[kRegisterCount];
 
   do
   {
@@ -414,20 +434,34 @@ void Deluxe68::spill(Tokenizer& tokenizer)
       continue;
     }
 
-    alloc.m_StackSlot = m_SpillStackDepth++;
     alloc.m_Spilled = 1;
+    alloc.m_StackSlot = -1;
 
     int regIndex = alloc.m_RegIndex;
 
-    savedRegs |= 1 << regIndex;
-
-    m_Registers[regIndex].spill();
+    savedRegMask |= 1 << regIndex;
+    pendingSpills[savedRegCount].m_RegisterIndex = regIndex;
+    pendingSpills[savedRegCount].m_RegAlloc = &alloc;
+    savedRegCount++;
 
   } while (accept(tokenizer, TokenType::kComma));
 
-  if (0 != savedRegs)
+  if (0 != savedRegMask)
   {
-    output(OutputElement(OutputKind::kSpill, savedRegs));
+    // Assign stack slots depending on registers involved in the movem.
+
+    // It's enough to just sort on the register index here, because movem.l
+    // will always write d0,d1,d2...,a0,a1,... to memory. The final address
+    // pointer ends up pointing at the lowest d-register written.
+    std::sort(pendingSpills, pendingSpills + savedRegCount);
+
+    for (int i = 0; i < savedRegCount; ++i)
+    {
+      pendingSpills[i].m_RegAlloc->m_StackSlot = m_SpillStackDepth++;
+      m_Registers[pendingSpills[i].m_RegisterIndex].spill();
+    }
+
+    output(OutputElement(OutputKind::kSpill, savedRegMask));
   }
 }
 
