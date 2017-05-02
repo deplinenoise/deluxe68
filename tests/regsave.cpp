@@ -116,3 +116,21 @@ TEST_F(DeluxeTest, StackSlots2)
         "\t\t@endproc\n"));
 }
 
+
+// Test that @reserve will preserve the old value of a register.
+TEST_F(DeluxeTest, ReserveSaves)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\tmovem.l d3/d4,-(sp)\n"
+        "\t\tmovem.l (sp)+,d3/d4\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@proc foo\n"
+        "\t\t@reserve d3\n"
+        "\t\t@unreserve d3\n"
+        "\t\t@reserve d4\n"
+        "\t\t@unreserve d4\n"
+        "\t\t@endproc\n"));
+}

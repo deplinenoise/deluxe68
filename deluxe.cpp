@@ -343,6 +343,7 @@ void Deluxe68::reserve(Tokenizer& tokenizer)
     }
 
     m_Registers[regIndex].setReserved(true);
+    m_CurrentProc.m_UsedRegs |= 1 << regIndex;
 
   } while (accept(tokenizer, TokenType::kComma));
 }
