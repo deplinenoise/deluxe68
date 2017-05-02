@@ -75,16 +75,35 @@ To explicitly spill a named register to the stack (returning it to the pool) you
                 ...
                 @restore a              ; a is now back in the same register it lived in before
 
-`@spill` and `@restore` can also work with real registers, which is useful when
-you want to call some external code using a particular calling interface:
+`@spill` and `@restore` can also work with real registers. Spilling a real register ensures that
+there is nothing named in that real register. This is useful when calling external code.
+
+### Reserving and unreserving registers
+
+To reserve a real register you can use `@reserve`:
+
+                @reserve d0             ; d0 is no longer available to the allocator
+                moveq   #0,d0
+                ...
+                @unreserve d0           ; return d0 to the register allocator
+
+### Calling subroutines
+
+When you want to call a subroutine then you typically need to place arguments in specific registers.
+Use `@spill`/`@reserve` pairs to prepare the registers for use, and `@unreserve`/`@restore` pairs
+when you are done:
 
                 @spill  a0,d1
+                @reserve a0,d1
                 move.l  @foo,a0
                 move.l  @bar,d1
                 bsr     SomeExternalCode
+                @unreserve a0,d1
                 @restore a0,d1
 
-If `a0` or `d1` are not allocated, the spill does nothing.
+If `a0` or `d1` are not allocated, the `@spill`/`@restore` operations will do nothing.
+The `@reserve`/`@unreserve` operations are for bookkeeping, and will generate no code.
+
 
 ### Procedures
 
