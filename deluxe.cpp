@@ -5,12 +5,13 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-Deluxe68::Deluxe68(const char* ifn, const char* data, size_t len, bool emitLineDirectives)
+Deluxe68::Deluxe68(const char* ifn, const char* data, size_t len, bool emitLineDirectives, bool procSections)
   : m_InputData(data)
   , m_InputLen(len)
   , m_Filename(ifn)
   , m_ParsePoint(data)
   , m_EmitLineDirectives(emitLineDirectives)
+  , m_ProcSections(procSections)
 {
   killAll();
 }
@@ -716,6 +717,8 @@ void Deluxe68::generateOutput(PrintCallback* cb, void* user_data) const
         printRestore(elem.m_IntValue);
         break;
       case OutputKind::kProcHeader:
+        if (m_ProcSections)
+          outf("\t\tsection\tproc_%.*s,code\n", elem.m_String.length(), elem.m_String.ptr());
         outf("%.*s:\n", elem.m_String.length(), elem.m_String.ptr());
         printSpill(usedRegsForProcecure(elem.m_String));
         break;

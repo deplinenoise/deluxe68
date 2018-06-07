@@ -16,6 +16,7 @@ static void usage()
 int main(int argc, char* argv[])
 {
   bool emitLineDirectives = false;
+  bool procSections = false;
   int positionalCount = 0;
   const char* positionals[2] = { nullptr, nullptr };
 
@@ -26,6 +27,10 @@ int main(int argc, char* argv[])
       if (0 == strcmp("-l", argv[i]))
       {
         emitLineDirectives = true;
+      }
+      else if (0 == strcmp("-p", argv[i]))
+      {
+        procSections = true;
       }
       else
       {
@@ -64,7 +69,7 @@ int main(int argc, char* argv[])
     fclose(f);
   }
 
-  Deluxe68 d(positionals[0], inputData.data(), inputData.size(), emitLineDirectives);
+  Deluxe68 d(positionals[0], inputData.data(), inputData.size(), emitLineDirectives, procSections);
 
   d.run();
 

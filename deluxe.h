@@ -66,6 +66,7 @@ private:
   const char* m_ParsePoint;
 
   bool m_EmitLineDirectives = false;
+  bool m_ProcSections = false;
   int m_CurrentOutputLine = 0;
 
   StringFragment m_CurrentProcName;
@@ -150,7 +151,7 @@ private:
   std::unordered_map<StringFragment, ProcedureDef> m_Procedures;
 
 public:
-  explicit Deluxe68(const char* ifn, const char* data, size_t len, bool emitLineDirectives);
+  explicit Deluxe68(const char* ifn, const char* data, size_t len, bool emitLineDirectives, bool procSections);
 
   ~Deluxe68();
 
