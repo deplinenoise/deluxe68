@@ -14,6 +14,7 @@ enum class TokenType
   kLeftParen,
   kRightParen,
   kProc,
+  kCProc,
   kEndProc,
   kComma,
   kColon,

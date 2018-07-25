@@ -27,6 +27,7 @@ struct ProcedureDef
 {
   uint32_t m_UsedRegs = 0;
   uint32_t m_InputRegs = 0;
+  bool m_SaveInputRegs = false;
 };
 
 struct OutputElement
@@ -172,7 +173,7 @@ private:
 
   void allocRegs(Tokenizer& tokenizer, TokenType regType);
   void killRegs(Tokenizer& tokenizer);
-  void proc(Tokenizer& tokenizer);
+  void proc(Tokenizer& tokenizer, bool saveInputs);
   void endProc(Tokenizer& tokenizer);
   void reserve(Tokenizer& tokenizer);
   void unreserve(Tokenizer& tokenizer);

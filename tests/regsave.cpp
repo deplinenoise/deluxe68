@@ -134,3 +134,29 @@ TEST_F(DeluxeTest, ReserveSaves)
         "\t\t@unreserve d4\n"
         "\t\t@endproc\n"));
 }
+
+// Test that @proc (a0:foo) will not save a0
+TEST_F(DeluxeTest, ProcDoesntSaveParams)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@proc foo(a0:foo)\n"
+        "\t\t@endproc\n"));
+}
+
+// Test that @cproc (a0:foo) will save a0
+TEST_F(DeluxeTest, CProcSavesParams)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\tmovem.l a0,-(sp)\n"
+        "\t\tmovem.l (sp)+,a0\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@cproc foo(a0:foo)\n"
+        "\t\t@endproc\n"));
+}

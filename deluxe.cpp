@@ -101,7 +101,11 @@ void Deluxe68::parseLine(StringFragment line)
       break;
 
     case TokenType::kProc:
-      proc(tokenizer);
+      proc(tokenizer, false);
+      break;
+
+    case TokenType::kCProc:
+      proc(tokenizer, true);
       break;
 
     case TokenType::kEndProc:
@@ -258,7 +262,7 @@ void Deluxe68::killRegs(Tokenizer& tokenizer)
   expect(tokenizer, TokenType::kEndOfLine);
 }
 
-void Deluxe68::proc(Tokenizer& tokenizer)
+void Deluxe68::proc(Tokenizer& tokenizer, bool saveInputs)
 {
   if (m_CurrentProcName)
   {
@@ -312,6 +316,7 @@ void Deluxe68::proc(Tokenizer& tokenizer)
   output(OutputElement(OutputKind::kProcHeader, ident.m_String));
 
   m_CurrentProc.m_InputRegs = inputRegMask;
+  m_CurrentProc.m_SaveInputRegs = saveInputs;
 }
 
 void Deluxe68::endProc(Tokenizer& tokenizer)
@@ -750,7 +755,10 @@ uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
   }
 
   const ProcedureDef& procDef = iter->second;
-  return procDef.m_UsedRegs & ~(procDef.m_InputRegs);
+  if (procDef.m_SaveInputRegs)
+    return procDef.m_UsedRegs | procDef.m_InputRegs;
+  else
+    return procDef.m_UsedRegs & ~(procDef.m_InputRegs);
 }
 
 void Deluxe68::printSpill(uint32_t regMask) const
