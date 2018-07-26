@@ -285,6 +285,7 @@ void Deluxe68::proc(Tokenizer& tokenizer, bool saveInputs)
   }
 
   int inputRegMask = 0;
+  int modifiedRegMask = 0;
 
   // Allow just proc <ident>, OR proc <ident> (<signature>)
   if (accept(tokenizer, TokenType::kLeftParen))
@@ -311,12 +312,35 @@ void Deluxe68::proc(Tokenizer& tokenizer, bool saveInputs)
     expect(tokenizer, TokenType::kRightParen);
   }
 
+  // Allow 'modifies <reg-list>'
+  Token kw;
+  if (accept(tokenizer, TokenType::kIdentifier, &kw))
+  {
+    if (StringFragment("modifies", 8) == kw.m_String)
+    {
+      do
+      {
+        Token reg;
+        if (!expect(tokenizer, TokenType::kRegister, &reg))
+          return;
+
+        modifiedRegMask |= 1 << reg.m_Register;
+
+      } while (accept(tokenizer, TokenType::kComma));
+    }
+    else
+    {
+      error("keyword '%.*s' not allowed here\n", kw.m_String.length(), kw.m_String.ptr());
+    }
+  }
+
   expect(tokenizer, TokenType::kEndOfLine);
 
   output(OutputElement(OutputKind::kProcHeader, ident.m_String));
 
   m_CurrentProc.m_InputRegs = inputRegMask;
   m_CurrentProc.m_SaveInputRegs = saveInputs;
+  m_CurrentProc.m_TrashedRegs = modifiedRegMask;
 }
 
 void Deluxe68::endProc(Tokenizer& tokenizer)
@@ -755,10 +779,16 @@ uint32_t Deluxe68::usedRegsForProcecure(const StringFragment& procName) const
   }
 
   const ProcedureDef& procDef = iter->second;
+
+  uint32_t savedMask;
+
   if (procDef.m_SaveInputRegs)
-    return procDef.m_UsedRegs | procDef.m_InputRegs;
+    savedMask = procDef.m_UsedRegs | procDef.m_InputRegs;
   else
-    return procDef.m_UsedRegs & ~(procDef.m_InputRegs);
+    savedMask = procDef.m_UsedRegs & ~(procDef.m_InputRegs);
+
+  // Never save trashed regs - e.g. return values.
+  return savedMask & ~procDef.m_TrashedRegs;
 }
 
 void Deluxe68::printSpill(uint32_t regMask) const

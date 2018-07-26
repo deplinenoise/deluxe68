@@ -27,6 +27,7 @@ struct ProcedureDef
 {
   uint32_t m_UsedRegs = 0;
   uint32_t m_InputRegs = 0;
+  uint32_t m_TrashedRegs = 0;
   bool m_SaveInputRegs = false;
 };
 

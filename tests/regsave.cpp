@@ -160,3 +160,15 @@ TEST_F(DeluxeTest, CProcSavesParams)
         "\t\t@cproc foo(a0:foo)\n"
         "\t\t@endproc\n"));
 }
+//
+// Test that '@cproc (d0:foo) modifies d0' will not save d0
+TEST_F(DeluxeTest, CProcSavesParamsModifies)
+{
+  EXPECT_EQ(
+        "foo:\n"
+        "\t\trts\n",
+      //---------------------
+      xform(
+        "\t\t@cproc foo(d0:foo) modifies d0\n"
+        "\t\t@endproc\n"));
+}
