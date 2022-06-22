@@ -33,7 +33,7 @@ local common = {
 }
 
 Build {
-  Units = function () 
+  Units = function ()
     local deluxe = Program {
       Name = "deluxe68",
       Sources = {
@@ -42,6 +42,7 @@ Build {
         "tokenizer.cpp",
         "registers.cpp"
       },
+      Libs = { "pthread"; Config = "linux-*-*" },
     }
     Default(deluxe)
 
@@ -60,6 +61,7 @@ Build {
         "tests/tokenizer_test.cpp",
         "tests/regsave.cpp",
         "external/gtest/googletest/src/gtest-all.cc" },
+      Libs = { "pthread"; Config = "linux-*-*" },
     }
     Default(deluxeTest)
   end,
@@ -77,6 +79,12 @@ Build {
       Inherit = common,
       Tools = { "clang-osx" },
       DefaultOnHost = "macosx",
+    },
+    Config {
+      Name = "linux-gcc",
+      Inherit = common,
+      Tools = { "gcc" },
+      DefaultOnHost = "linux",
     },
   },
 }
