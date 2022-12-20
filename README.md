@@ -2,7 +2,7 @@
 
 Deluxe68 is a simple (stupid) register allocator frontend for 68k assembly. It
 is a source to source translator, so you'll need your regular assembler to
-assemble its output. All is does it automate some tedious register allocation
+assemble its output. All it does is automate some tedious register allocation
 for you.
 
 ## Usage
