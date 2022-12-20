@@ -6,6 +6,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <string>
 
 #include "tokenizer.h"
 #include "registers.h"
